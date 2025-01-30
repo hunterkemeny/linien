@@ -156,6 +156,9 @@ class GeneralPanel(QtWidgets.QWidget):
         # Add TTL pulse button connection
         self.ttlPulseButton.clicked.connect(self.send_ttl_pulse)
 
+        # Add callback for autolock status
+        self.parameters.lock.add_callback(self.on_lock_status_changed)
+
     def on_analog_out_changed(self, idx):
         getattr(self.parameters, f"analog_out_{idx}").value = int(
             getattr(self, f"analogOutComboBox{idx}").value() / ANALOG_OUT_V
@@ -258,3 +261,22 @@ class GeneralPanel(QtWidgets.QWidget):
             self.ttlPulseButton.setEnabled(True)
         
         QTimer.singleShot(10000, restore_output)
+
+    def on_lock_status_changed(self, locked):
+        if locked:
+            # Store original GPIO values
+            self.original_gpio_p = self.parameters.gpio_p_out.value
+            self.original_gpio_n = self.parameters.gpio_n_out.value
+            
+            # Set all GPIO pins high (both P and N)
+            self.parameters.gpio_p_out.value = 0b11111111
+            self.parameters.gpio_n_out.value = 0b11111111
+            self.control.write_registers()
+            
+            # Create timer to restore original values after 10 seconds
+            def restore_output():
+                self.parameters.gpio_p_out.value = self.original_gpio_p
+                self.parameters.gpio_n_out.value = self.original_gpio_n
+                self.control.write_registers()
+            
+            QTimer.singleShot(10000, restore_output)
