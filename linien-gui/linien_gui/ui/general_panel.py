@@ -24,6 +24,7 @@ from linien_gui.config import UI_PATH
 from linien_gui.ui.spin_box import CustomDoubleSpinBoxNoSign
 from linien_gui.utils import get_linien_app_instance, param2ui
 from PyQt5 import QtWidgets, uic
+from PyQt5.QtCore import QTimer
 
 
 class GeneralPanel(QtWidgets.QWidget):
@@ -48,6 +49,7 @@ class GeneralPanel(QtWidgets.QWidget):
     polarityContainerFastOut2: QtWidgets.QWidget
     polarityComboBoxFastOut2: QtWidgets.QComboBox
     modulationChannelComboBox: QtWidgets.QComboBox
+    ttlPulseButton: QtWidgets.QPushButton
 
     def __init__(self, *args, **kwargs) -> None:
         super(GeneralPanel, self).__init__(*args, **kwargs)
@@ -79,6 +81,7 @@ class GeneralPanel(QtWidgets.QWidget):
         self.polarityComboBoxAnalogOut0.currentIndexChanged.connect(
             self.on_polarity_analog_out0_changed
         )
+        self.ttlPulseButton.clicked.connect(self.send_ttl_pulse)
 
         for idx in range(1, 4):
             element: CustomDoubleSpinBoxNoSign = getattr(
@@ -149,6 +152,9 @@ class GeneralPanel(QtWidgets.QWidget):
                 widget.setEnabled(not pid_only_mode_enabled)
 
         self.parameters.pid_only_mode.add_callback(on_pid_only_mode_changed)
+
+        # Add TTL pulse button connection
+        self.ttlPulseButton.clicked.connect(self.send_ttl_pulse)
 
     def on_analog_out_changed(self, idx):
         getattr(self.parameters, f"analog_out_{idx}").value = int(
@@ -230,3 +236,25 @@ class GeneralPanel(QtWidgets.QWidget):
         self.polarityContainerAnalogOut0.setVisible(
             OutputChannel.ANALOG_OUT0 in used_channels
         )
+
+    def send_ttl_pulse(self):
+        # Disable button during pulse
+        self.ttlPulseButton.setEnabled(False)
+        
+        # Store original GPIO values
+        original_gpio_p = self.parameters.gpio_p_out.value
+        original_gpio_n = self.parameters.gpio_n_out.value
+        
+        # Set all GPIO pins high (both P and N)
+        self.parameters.gpio_p_out.value = 0b11111111  # All 8 P pins high
+        self.parameters.gpio_n_out.value = 0b11111111  # All 8 N pins high
+        self.control.write_registers()
+        
+        # Create timer to restore original values after 10 seconds
+        def restore_output():
+            self.parameters.gpio_p_out.value = original_gpio_p
+            self.parameters.gpio_n_out.value = original_gpio_n
+            self.control.write_registers()
+            self.ttlPulseButton.setEnabled(True)
+        
+        QTimer.singleShot(10000, restore_output)
